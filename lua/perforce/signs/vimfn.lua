@@ -11,7 +11,7 @@ local function get_sign_name(name, stype)
 	local key = name .. stype
 	if not sign_name_cache[key] then
 		sign_name_cache[key] =
-			string.format("%s%s%s", "PerforceSigns", utils.capitalize_word(name), utils.capitalize_word(stype))
+			string.format("%s%s%s", "Perforce", utils.capitalize_word(name), utils.capitalize_word(stype))
 	end
 	return sign_name_cache[key]
 end

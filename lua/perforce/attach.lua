@@ -8,6 +8,8 @@ local CacheEntry = pcache.CacheEntry
 
 local Status = require("perforce.status")
 
+local vimgrep_running = false
+
 local M = {}
 
 local function on_lines(_, bufnr, _, first, last_orig, last_new, byte_count) end
@@ -29,14 +31,36 @@ function M._setup()
 
 	hl.setup()
 	vim.api.nvim_create_autocmd("ColorScheme", {
-		group = "perforce_nvim",
+		group = "perforce",
 		callback = hl.setup,
 	})
 
-	-- TODO: more autocmds
+	vim.api.nvim_create_autocmd("OptionSet", {
+		group = "perforce",
+		pattern = "fileformat",
+		callback = function()
+			require("perforce.actions").refresh()
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("QuickFixCmdPre", {
+		group = "perforce",
+		pattern = "*vimgrep*",
+		callback = function()
+			vimgrep_running = true
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("QuickFixCmdPost", {
+		group = "perforce",
+		pattern = "*vimgrep*",
+		callback = function()
+			vimgrep_running = false
+		end,
+	})
 
 	vim.api.nvim_create_autocmd("VimLeavePre", {
-		group = "perforce_nvim",
+		group = "perforce",
 		callback = M.detach_all,
 	})
 end
@@ -45,6 +69,11 @@ function M.attach(bufnr, ctx, trigger)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 
 	M._setup()
+
+	if vimgrep_running then
+		return
+	end
+
 	if not vim.api.nvim_buf_is_loaded(bufnr) then
 		return
 	end

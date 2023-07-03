@@ -10,7 +10,7 @@ local M = {}
 ---@type table<string,Perfoce.Hldef>[]
 M.hls = {
 	{
-		PerforceSignsAdd = {
+		PerforceAdd = {
 			"GitGutterAdd",
 			"SignifySignAdd",
 			"DiffAddedGutter",
@@ -20,7 +20,7 @@ M.hls = {
 		},
 	},
 	{
-		PerforceSignsChange = {
+		PerforceChange = {
 			"GitGutterChange",
 			"SignifySignChange",
 			"DiffModifiedGutter",
@@ -30,7 +30,7 @@ M.hls = {
 		},
 	},
 	{
-		PerforceSignsDelete = {
+		PerforceDelete = {
 			"GitGutterDelete",
 			"SignifySignDelete",
 			"DiffRemovedGutter",
@@ -40,7 +40,7 @@ M.hls = {
 		},
 	},
 	{
-		PerforceSignsAddPreview = {
+		PerforceAddPreview = {
 			"GitGutterAddLine",
 			"SignifyLineAdd",
 			"DiffAdd",
@@ -48,7 +48,7 @@ M.hls = {
 		},
 	},
 	{
-		PerforceSignsDeletePreview = {
+		PerforceDeletePreview = {
 			"GitGutterDeleteLine",
 			"SignifyLineDelete",
 			"DiffDelete",
@@ -57,16 +57,38 @@ M.hls = {
 	},
 
 	{
-		PerforceSignsAddInline = {
+		PerforceAddInline = {
 			"TermCursor",
 			desc = "Used for added word diff regions in inline preview",
 		},
-		PerforceSignsChangeInline = {
+	},
+	{
+		PerforceChangeInline = {
 			"TermCursor",
 			desc = "Used for changeed word diff regions in inline preview",
 		},
-		PerforceSignsDeleteInline = {
+	},
+	{
+		PerforceDeleteInline = {
 			"TermCursor",
+			desc = "Used for deleted word diff regions in inline preview",
+		},
+	},
+	{
+		PerforceAddLnInline = {
+			"PerforceAddInline",
+			desc = "Used for added word diff regions in inline preview",
+		},
+	},
+	{
+		PerforceChangeLnInline = {
+			"PerforceChangeInline",
+			desc = "Used for changeed word diff regions in inline preview",
+		},
+	},
+	{
+		PerforceDeleteLnInline = {
+			"PerforceDeleteInline",
 			desc = "Used for deleted word diff regions in inline preview",
 		},
 	},

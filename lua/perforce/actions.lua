@@ -13,7 +13,7 @@ local M = {}
 local C = {}
 local CP = {}
 
-local ns_inline = vim.api.nvim_create_namespace("perforce_nvim_preview_inline")
+local ns_inline = vim.api.nvim_create_namespace("perforce_preview_inline")
 
 function M.toggle_signs(value)
 	if value ~= nil then

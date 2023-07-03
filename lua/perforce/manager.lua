@@ -7,49 +7,142 @@ local Status = require("perforce.status")
 
 local Hunks = require("perforce.hunks")
 
+local run_diff = require("perforce.diff")
+
 local signs --- @type Perforce.Signs
 
-local ns = vim.api.nvim_create_namespace("perforce_nvim")
+local ns = vim.api.nvim_create_namespace("perforce")
+local ns_rm = vim.api.nvim_create_namespace("perforce_removed")
+
+local VIRT_LINE_LEN = 300
+
+local update_count = 0
 
 local M = {}
 
--- ---@param bufnr integer
--- ---@param signs Perforce.Signs
--- ---@param hunks Perforce.Hunk[]
--- ---@param top integer
--- ---@param bot integer
--- ---@param clear boolean
--- local function apply_win_signs0(bufnr, signs, hunks, top, bot, clear)
--- 	if clear then
--- 		signs:remove(bufnr)
--- 	end
---
--- 	for i, hunk in ipairs(hunks or {}) do
--- 		if clear and i == 1 then
--- 			signs:add(bufnr, Hunks.calc_signs(hunk, hunk.added.start, hunk.added.start))
--- 		end
---
--- 		if top <= hunk.vend and bot >= hunk.added.start then
--- 			signs:add(bufnr, Hunks.calc_signs(hunk, top, bot))
--- 		end
--- 		if hunk.added.start > bot then
--- 			break
--- 		end
--- 	end
--- end
---
--- ---@param bufnr bufnr
--- ---@param top integer
--- ---@param bot integer
--- ---@param clear boolean
--- local function apply_win_signs(bufnr, top, bot, clear)
--- 	local bcache = cache[bufnr]
--- 	if not bcache then
--- 		return
--- 	end
---
--- 	apply_win_signs0(bufnr, signs, bcache.hunks, top, bot, clear)
--- end
+---@param bufnr integer
+---@param signs Perforce.Signs
+---@param hunks Perforce.Hunk[]
+---@param top integer
+---@param bot integer
+---@param clear boolean
+-- ---@param untracked boolean
+local function apply_win_signs0(bufnr, signs, hunks, top, bot, clear) -- , untracked)
+	if clear then
+		signs:remove(bufnr)
+	end
+
+	for i, hunk in ipairs(hunks or {}) do
+		if clear and i == 1 then
+			signs:add(bufnr, Hunks.calc_signs(hunk, hunk.added.start, hunk.added.start)) --, untracked)
+		end
+
+		if top <= hunk.vend and bot >= hunk.added.start then
+			signs:add(bufnr, Hunks.calc_signs(hunk, top, bot)) --, untracked)
+		end
+		if hunk.added.start > bot then
+			break
+		end
+	end
+end
+
+---@param bufnr bufnr
+---@param top integer
+---@param bot integer
+---@param clear boolean
+-- ---@param untracked boolean
+local function apply_win_signs(bufnr, top, bot, clear) --, untracked)
+	local bcache = cache[bufnr]
+	if not bcache then
+		return
+	end
+
+	apply_win_signs0(bufnr, signs, bcache.hunks, top, bot, clear) -- , untracked)
+end
+
+---@param bufnr integer
+---@param row integer
+local function apply_word_diff(bufnr, row)
+	if vim.fn.foldclosed(row + 1) ~= -1 then
+		return
+	end
+
+	local bcache = cache[bufnr]
+	if not bcache or not bcache.hunks then
+		return
+	end
+
+	local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
+	if not line then
+		return
+	end
+
+	local lnum = row + 1
+
+	local hunk = Hunks.find_hunk(lnum, bcache.hunks)
+	if not hunk then
+		return
+	end
+
+	if hunk.added.count ~= hunk.removed.count then
+		return
+	end
+
+	local pos = lnum - hunk.added.start + 1
+
+	local added_line = hunk.added.lines[pos]
+	local removed_line = hunk.removed.lines[pos]
+
+	local _, added_regions = require("perforce.diff.internal").run_word_diff({ removed_line }, { added_line })
+
+	local cols = #line
+
+	for _, region in ipairs(added_regions) do
+		local rtype, scol, ecol = region[2], region[3] - 1, region[4] - 1
+		if ecol == scol then
+			ecol = scol + 1
+		end
+
+		local hl_group = rtype == "add" and "PerforceAddLnInline"
+			or rtype == "change" and "PerforceChangeLnInline"
+			or "PerforceDeleteLnInline"
+
+		local opts = { ephemeral = true, priority = 1000 }
+
+		if ecols > cols and ecol == scol + 1 then
+			opts.virt_text = { { " ", hl_group } }
+			opts.virt_text_pos = "overlay"
+		else
+			opts.end_col = ecol
+			opts.hl_group = hl_group
+		end
+
+		vim.api.nvim_buf_set_extmark(bufnr, ns, row, scol, opts)
+		vim.api.nvim__buf_redraw_range(bufnr, row, row + 1)
+	end
+end
+
+---@param buf integer
+---@param first integer
+---@param last_orig integer
+---@param last_new integer
+---@return true?
+function M.on_lines(buf, first, last_orig, last_new)
+	local bcache = cache[buf]
+	if not bcache then
+		return true
+	end
+
+	signs:on_lines(buf, first, last_orig, last_new)
+
+	if bcache.hunks and signs:contains(buf, first, last_new) then
+		bcache.force_next_update = true
+	end
+
+	M.update(bufnr, cache[buf])
+end
+
+function M.show_deleted(bufnr, nsd, hunk) end
 
 function M.show_added(bufnr, nsw, hunk)
 	local start_row = hunk.added.start - 1
@@ -58,7 +151,7 @@ function M.show_added(bufnr, nsw, hunk)
 		local row = start_row + offset
 		vim.api.nvim_buf_set_extmark(bufnr, nsw, row, 0, {
 			end_row = row + 1,
-			hlgroup = "PerforceSignsAddPreview",
+			hlgroup = "PerforceAddPreview",
 			hl_eol = true,
 			priority = 1000,
 		})
@@ -70,13 +163,55 @@ function M.show_added(bufnr, nsw, hunk)
 		local offset, rtype, scol, ecol = region[1] - 1, region[2], region[3] - 1, region[4] - 1
 		vim.api.nvim_buf_set_extmark(bufnr, nsw, start_row + offset, scol, {
 			end_col = ecol,
-			hl_group = rtype == "add" and "PerforceSignsAddInline"
-				or rtype == "change" and "PerforceSignsChangeInline"
-				or "PerforceSignsDeleteInline",
+			hl_group = rtype == "add" and "PerforceAddInline"
+				or rtype == "change" and "PerforceChangeInline"
+				or "PerforceDeleteInline",
 			priority = 1001,
 		})
 	end
 end
+
+---@param bufnr integer
+local function clear_deleted(bufnr)
+	local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns_rm, 0, -1, {})
+	for _, mark in ipairs(marks) do
+		vim.api.nvim_buf_del_extmark(bufnr, ns_rm, mark[1])
+	end
+end
+
+---@param win integer
+---@param lnum integer
+---@param width integer
+---@return string
+---@return {group: string, start:integer}[]?
+local function build_lno_str(win, lnum, width)
+	local has_col, statuscol = pcall(vim.api.nvim_get_option_value, "statuscolumn", { win = win, scope = "local" })
+	if has_col and statuscol and statuscol ~= "" then
+		local ok, data = pcall(vim.api.nvim_eval_statusline, statuscol, {
+			winid = win,
+			use_statuscol_lnum = lnum,
+			highlights = true,
+		})
+		if ok then
+			return data.str, data.highlights
+		end
+	end
+	return string.format("%" .. width .. "d", lnum)
+end
+
+---@param bufnr integer
+local function update_show_deleted(bufnr)
+	local bcache = cache[bufnr]
+
+	clear_deleted(bufnr)
+	if config.show_deleted then
+		for _, hunk in ipairs(bcache.hunks or {}) do
+			M.show_deleted(bufnr, ns_rm, hunk)
+		end
+	end
+end
+
+-- local function handle_moved(bufnr, bcache, old_relpath) end
 
 ---@param bufnr integer
 ---@param bcache? Perforce.CacheEntry
@@ -86,13 +221,29 @@ function M.update(bufnr, bcache)
 		return
 	end
 
-	-- local old_hunks = bcache.hunks
-	-- get text from hunks
-	-- compute diff
-	-- update
-	-- exec autocmds
+	local old_hunks = bcache.hunks
+	bcache.hunks = nil
 
-	-- with hunk summary, update status
+	-- NOTE: does this need to be factored out? dos fileformat friendly?
+	local buftext = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
+	local p4_file = bcache.p4_file
+
+	-- TODO: compare text, if enabled
+
+	-- run current diff
+	-- bcache.hunks = run_diff(bcache.compare_text, buftext)
+
+	-- if  force_next_update or compare heads...
+	-- apply_win_signs
+	-- update_show_deleted
+	-- force_next_update = false
+	-- vim.api.nvim_exec_autocmds("User", { pattern = "PerforceUpdate", modeline = false })
+
+	local summary = Hunks.get_summary(bcache.hunks)
+	Status:update(bufnr, summary)
+
+	update_count = update_count + 1
 end
 
 ---@param bufnr integer
@@ -157,8 +308,12 @@ local function on_win(cb, winid, bufnr, topline, botline_guess)
 	-- apply_win_signs(bufnr, topline + 1, botline + 1, false)
 end
 
-local function on_line(cb, winid, bufnr, row)
-	-- word diff
+---@param _cb 'line'
+---@param _winid integer
+---@param bufnr integer
+---@param row integer
+local function on_line(_cb, _winid, bufnr, row)
+	apply_word_diff(bufnr, row)
 end
 
 function M.setup()

@@ -84,40 +84,74 @@ local function change_end(hunk)
 	end
 end
 
--- ---@param hunk Perforce.Hunk
--- ---@param min_lnum integer
--- ---@param max_lnum integer
--- -- ---@param untracked boolean
--- function M.calc_signs(hunk, min_lnum, max_lnum) --, untracked)
--- 	min_lnum = min_lnum or 1
--- 	max_lnum = max_lnum or math.huge
---
--- 	local start, added, removed = hunk.added.start, hunk.added.count, hunk.removed.count
---
--- 	if hunk.type == "delete" and start == 0 then
--- 		if min_lnum <= 1 then
--- 			return { { type = "topdelete", count = removed, lnum = 1 } }
--- 		else
--- 			return {}
--- 		end
--- 	end
---
--- 	local signs = {} ---@type Perforce.Sign[]
---
--- 	local cend = change_end(hunk)
---
--- 	for lnum = math.max(start, min_lnum), max.min(cend, max_lnum) do
--- 		local changedelete = hunk.type == "change" and removed > added and lnum == cend
---
---     signs[#signs+1] = {
---       type = changedelete and "changedelete" o
---     }
--- 	end
--- end
+---@param hunk Perforce.Hunk
+---@param min_lnum integer
+---@param max_lnum integer
+-- ---@param untracked boolean
+function M.calc_signs(hunk, min_lnum, max_lnum) --, untracked)
+	min_lnum = min_lnum or 1
+	max_lnum = max_lnum or math.huge
 
--- TODO:
--- function M.get_summary(hunks)
--- end
+	local start, added, removed = hunk.added.start, hunk.added.count, hunk.removed.count
+
+	if hunk.type == "delete" and start == 0 then
+		if min_lnum <= 1 then
+			return { { type = "topdelete", count = removed, lnum = 1 } }
+		else
+			return {}
+		end
+	end
+
+	local signs = {} ---@type Perforce.Sign[]
+
+	local cend = change_end(hunk)
+
+	for lnum = math.max(start, min_lnum), max.min(cend, max_lnum) do
+		local changedelete = hunk.type == "change" and removed > added and lnum == cend
+
+		signs[#signs + 1] = {
+			type = changedelete and "changedelete"
+				--or untracked and "untracked"
+				or hunk.type,
+			count = lnum == start and (hunk.type == "add" and added or removed) or nil,
+			lnum = lnum,
+		}
+	end
+
+	if hunk.type == "change" and added > removed and hunk.vend >= min_lnum and cend <= max_lnum then
+		for lnum = math.max(cend, min_lnum), math.min(hunk.vend, max_lnum) do
+			signs[#signs + 1] = {
+				type = "add",
+				count = lnum == hunk.vend and (added - removed) or nil,
+				lnum = lnum,
+			}
+		end
+	end
+
+	return signs
+end
+
+---@param hunks Perforce.Hunk[]
+---@return Perforce.Status
+function M.get_summary(hunks)
+	local status = { added = 0, changed = 0, removed = 0 } ---@type Perforce.Status
+
+	for _, hunk in ipairs(hunks or {}) do
+		if hunk.type == "add" then
+			status.added = status.added + hunk.added.count
+		elseif hunk.type == "delete" then
+			status.removed = status.removed + hunk.removed.count
+		elseif hunk.type == "change" then
+			local add, remove = hunk.added.count, hunk.removed.count
+			local delta = math.min(add, remove)
+			status.changed = status.changed + delta
+			status.added = status.added + add - delta
+			status.removed = status.removed + remove - delta
+		end
+	end
+
+	return status
+end
 
 ---@param lnum integer
 ---@param hunks Perforce.Hunk[]
