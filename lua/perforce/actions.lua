@@ -202,7 +202,7 @@ end
 ---@param hl string
 ---@return string[]
 local function hlmarks_for_hunk(hunk, hl)
-	local hls = {} ---@type table[]
+	local hls = {} --- @type table[]
 
 	local removed, added = hunk.removed, hunk.added
 
@@ -279,21 +279,25 @@ local function lines_format(fmt, info)
 	return ret
 end
 
-function M.preview_hunk(opts)
-	local ei = vim.o.eventignore
-	vim.o.eventignore = "all"
-
-	if popup.focus_open("hunk") then
+local function noautocmd(f)
+	return function()
+		local ei = vim.o.eventignore
+		vim.o.eventignore = "all"
+		f()
 		vim.o.eventignore = ei
+	end
+end
+
+M.preview_hunk = noautocmd(function()
+	if popup.focus_open("hunk") then
 		return
 	end
 
-	opts = vim.tbl_deep_extend("force", { bufnr = vim.api.nvim_get_current_buf() }, opts or {})
+	local bufnr = current_buf()
 
-	local hunk, index = get_cursor_hunk(opts.bufnr)
+	local hunk, index = get_cursor_hunk(bufnr)
 
 	if not hunk then
-		vim.o.eventignore = ei
 		return
 	end
 
@@ -306,14 +310,12 @@ function M.preview_hunk(opts)
 
 	local lines_spec = lines_format(lines_fmt, {
 		hunk_no = index,
-		num_hunks = #cache[opts.bufnr].hunks,
-		hunks = Hunks.patch_lines(hunk, vim.bo[opts.bufnr].fileformat),
+		num_hunks = #cache[bufnr].hunks,
+		hunk = Hunks.patch_lines(hunk, vim.bo[bufnr].fileformat),
 	})
 
 	popup.create(lines_spec, config.preview_config, "hunk")
-
-	vim.o.eventignore = ei
-end
+end)
 
 local function clear_preview_inline(bufnr)
 	vim.api.nvim_buf_clear_namespace(bufnr, ns_inline, 0, -1)
