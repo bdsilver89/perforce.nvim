@@ -293,7 +293,7 @@ M.preview_hunk = noautocmd(function()
 		return
 	end
 
-	local bufnr = current_buf()
+	local bufnr = vim.api.nvim_get_current_buf()
 
 	local hunk, index = get_cursor_hunk(bufnr)
 
