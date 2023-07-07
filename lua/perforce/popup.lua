@@ -1,0 +1,232 @@
+local M = {}
+
+---@param bufnr integer
+---@param lines string[]
+---@return integer
+local function bufnr_calc_width(bufnr, lines)
+	return vim.api.nvim_buf_call(bufnr, function()
+		local width = 0
+		for _, l in ipairs(lines) do
+			if vim.fn.type(l) == vim.v.t_string then
+				local len = vim.fn.strdisplaywidth(l)
+				if len > width then
+					width = len
+				end
+			end
+		end
+		return wdith + 1
+	end)
+end
+
+---@param winid integer
+---@param nlines integer
+local function expand_height(winid, nlines)
+	local newheight = 0
+	for _ = 0, 50 do
+		local winheight = vim.api.nvim_win_get_height(winid)
+		if newheight > winheight then
+			break
+		end
+		---@type integer
+		local wd = vim.api.nvim_win_call(winid, function()
+			return vim.fn.line("w$")
+		end)
+		if wd >= nlines then
+			break
+		end
+		newheight = winheight + nline - wd
+		vim.api.nvim_win_set_height(winid, newheight)
+	end
+end
+
+local function offest_hlmarks(hlmarks, row_offset)
+	for _, h in ipairs(hlmarks) do
+		if h.start_row then
+			h.start_row = h.start_row + row_offset
+		end
+		if h.end_row then
+			h.end_row = h.end_row + row_offset
+		end
+	end
+end
+
+---@param fmt {[1]: string, [2]: string}[][]
+local function process_linesspec(fmt)
+	local lines = {} ---@type string[]
+	local hls = {}
+
+	local row = 0
+	for _, section in ipairs(fmt) do
+		local sec = {} ---@type string[]
+		local pos = 0
+		for _, part in ipairs(section) do
+			local text = part[1]
+			local hl = part[2]
+
+			sec[#sec + 1] = text
+
+			local srow = row
+			local scol = pos
+
+			local ts = vim.split(text, "\n")
+
+			if #ts > 1 then
+				pos = 0
+				row = row + #ts - 1
+			else
+				pos = pos + #text
+			end
+
+			if type(hl) == "string" then
+				hls[#hls + 1] = {
+					hl_group = hl,
+					start_row = srow,
+					end_row = row,
+					start_col = scol,
+					end_col = pos,
+				}
+			else
+				offest_hlmarks(hl, srow)
+				vim.list_extend(hls, hl)
+			end
+		end
+		for _, l in ipairs(vim.split(table.concat(sec, ""), "\n")) do
+			lines[#lines + 1] = l
+		end
+		row = row + 1
+	end
+
+	return lines, hls
+end
+
+local function close_all_but(id)
+	for _, winid in ipairs(vim.api.nvim_list_wins()) do
+		if vim.w[winid].perforce_preview ~= nil and vim.w[winid].perforce_preview ~= id then
+			pcall(vim.api.nvim_win_close, winid, true)
+		end
+	end
+end
+
+function M.close(id)
+	for _, winid in ipairs(vim.api.nvim_list_wins()) do
+		if vim.w[winid].perforce_preview == id then
+			pcall(vim.api.nvim_win_close, winid, true)
+		end
+	end
+end
+
+function M.create0(lines, opts, id)
+	close_all_but(id)
+
+	local ts = vim.bo.tabstop
+	local bufnr = vim.api.nvim_create_buf(false, true)
+	assert(bufnr, "Failed to create buffer")
+
+	vim.bo[bufnr].modifiable = true
+	vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, lines)
+	vim.bo[bufnr].modifiable = false
+
+	vim.bo[bufnr].tabstop = ts
+
+	local opts1 = vim.deepcopy(opts or {})
+	opts1.height = opts1.height or #lines
+	opts1.width = opts1.width or bufnr_calc_width(bufnr, lines)
+
+	local winid = vim.api.nvim_open_win(bufnr, false, opts1)
+
+	vim.w[winid].perforce_preview = id or true
+
+	if not opts.height then
+		expand_height(winid, #lines)
+	end
+
+	if opts1.style == "minimal" then
+		vim.wo[winid].signcolumn = "no"
+	end
+
+	local group = vim.api.nvim_create_augroup("perforce_popup", {})
+	local old_cursor = vim.api.nvim_win_get_cursor(0)
+
+	vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
+		group = group,
+		callback = function()
+			local cursor = vim.api.nvim_win_get_cursor(0)
+
+			if
+				(old_cursor[1] ~= cursor[1] or old_cursor[2] ~= cursor[2])
+				and vim.api.nvim_get_current_win() ~= winid
+			then
+				-- clear the group
+				vim.api.nvim_create_augroup(group, {})
+				pcall(vim.api.nvim_win_close, winid, true)
+				return
+			end
+			old_cursor = cursor
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("WinClosed", {
+		pattern = tostring(winid),
+		group = group,
+		callback = function()
+			-- clear the group
+			vim.api.nvim_create_augroup(group, {})
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("WinScrolled", {
+		buffer = vim.api.nvim_get_current_buf(),
+		group = group,
+		callback = function()
+			if vim.api.nvim_win_is_valid(winid) then
+				vim.api.nvim_win_set_config(winid, opts1)
+			end
+		end,
+	})
+
+	return winid, bufnr
+end
+
+local ns = vim.api.nvim_create_namespace("perforce_popup")
+
+function M.create(lines_spec, opts, id)
+	local lines, highlights = process_linesspec(lines_spec)
+	local winid, bufnr = M.create0(lines, opts, id)
+
+	for _, hl in ipairs(highlights) do
+		local ok, err = pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, hl.start_row, hl.start_col or 0, {
+			hl_group = hl.hl_group,
+			end_row = hl.end_row,
+			end_col = hl.end_col,
+			hl_eol = true,
+		})
+		if not ok then
+			error(vim.inspect(hl) .. "\n" .. err)
+		end
+	end
+
+	return winid, bufnr
+end
+
+---@param id integer
+---@return integer|nil
+function M.is_open(id)
+	for _, winid in ipairs(vim.api.nvim_list_wins()) do
+		if vim.w[winid].perforce_preview == id then
+			return winid
+		end
+	end
+	return nil
+end
+
+---@param id integer
+---@return integer?
+function M.focus_open(id)
+	local winid = M.is_open(id)
+	if winid then
+		vim.api.nvim_set_current_win(winid)
+	end
+	return winid
+end
+
+return M

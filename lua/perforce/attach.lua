@@ -146,7 +146,7 @@ function M.attach(bufnr, ctx, trigger)
 	end
 
 	vim.api.nvim_buf_attach(bufnr, false, {
-		on_line = on_lines,
+		on_lines = on_lines,
 		on_reload = on_reload,
 		on_detach = on_detach,
 	})

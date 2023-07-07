@@ -105,10 +105,8 @@ function File.new(file)
 
 	-- temporarily set the local path to the one provided to this function
 	-- when we refresh, we will ask p4 for the absolute local path of the file
-	self.local_path = path
-
+	self.local_path = file
 	self:refresh()
-
 	return self
 end
 
@@ -131,7 +129,7 @@ function File:fstat(field)
 	})
 	local s = vim.fn.join(stdout, "\n")
 
-	if ret ~= 0 or not vim.fn.startswith(s, "...") then
+	if ret ~= 0 or not vim.startswith(s, "...") then
 		return nil
 	end
 

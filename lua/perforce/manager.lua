@@ -139,7 +139,7 @@ function M.on_lines(buf, first, last_orig, last_new)
 		bcache.force_next_update = true
 	end
 
-	M.update(bufnr, cache[buf])
+	M.update(buf, bcache)
 end
 
 function M.show_deleted(bufnr, nsd, hunk)
@@ -191,7 +191,7 @@ function M.show_added(bufnr, nsw, hunk)
 		local row = start_row + offset
 		vim.api.nvim_buf_set_extmark(bufnr, nsw, row, 0, {
 			end_row = row + 1,
-			hlgroup = "PerforceAddPreview",
+			hl_group = "PerforceAddPreview",
 			hl_eol = true,
 			priority = 1000,
 		})

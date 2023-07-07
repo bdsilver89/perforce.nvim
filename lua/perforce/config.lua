@@ -39,6 +39,7 @@ local M = {}
 ---@field word_diff boolean
 ---@field refresh_on_update boolean
 ---@field watch_dir { enable: boolean }
+---@field preview_config table<string, any>
 
 ---@type Perforce.Config
 M.defaults = {
@@ -108,6 +109,13 @@ M.defaults = {
 	word_diff = false,
 	watch_dir = {
 		enable = false,
+	},
+	preview_config = {
+		border = "single",
+		style = "minimal",
+		relative = "cursor",
+		row = 0,
+		col = 1,
 	},
 }
 

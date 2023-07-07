@@ -2,10 +2,12 @@ local config = require("perforce.config").config
 local manager = require("perforce.manager")
 local utils = require("perforce.utils")
 local Hunks = require("perforce.hunks")
-local Path = require("plenary.path")
+local popup = require("perforce.popup")
 
 local p4 = require("perforce.p4")
 local cache = require("perforce.cache").cache
+
+local Path = require("plenary.path")
 
 local M = {}
 
@@ -62,7 +64,7 @@ local function get_cursor_hunk(bufnr, hunks)
 		vim.list_extend(hunks, cache[bufnr].hunks or {})
 	end
 
-	local lhnum = vim.api.nvim_win_get_cursor(0)[1]
+	local lnum = vim.api.nvim_win_get_cursor(0)[1]
 	return Hunks.find_hunk(lnum, hunks)
 end
 
@@ -192,6 +194,42 @@ function M.diff(opts)
 	}, opts or {})
 
 	require("perforce.diff.this").diffthis("#have", opts)
+end
+
+function M.preview_hunk(opts)
+	local ei = vim.o.eventignore
+	vim.o.eventignore = "all"
+
+	if popup.focus_open("hunk") then
+		vim.o.eventignore = ei
+		return
+	end
+
+	opts = vim.tbl_deep_extend("force", { bufnr = vim.api.nvim_get_current_buf() }, opts or {})
+
+	local hunk, index = get_cursor_hunk(opts.bufnr)
+
+	if not hunk then
+		vim.o.eventignore = ei
+		return
+	end
+
+	local lines_fmt = {
+		{ { "Hunk <hunk_no> of <num_hunks>", "Title" } },
+		{ { "<hunk>", "NormalFloat" } },
+	}
+
+	insert_hunk_hlmarks(lines_fmt, hunk)
+
+	local lines_spec = lines_format(lines_fmt, {
+		hunk_no = index,
+		num_hunks = #cache[opts.bufnr].hunks,
+		hunks = Hunks.patch_lines(hunk, vim.bo[opts.bufnr].fileformat),
+	})
+
+	popup.create(lines_spec, config.preview_config, "hunk")
+
+	vim.o.eventignore = ei
 end
 
 local function clear_preview_inline(bufnr)

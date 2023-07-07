@@ -106,7 +106,7 @@ function M.calc_signs(hunk, min_lnum, max_lnum) --, untracked)
 
 	local cend = change_end(hunk)
 
-	for lnum = math.max(start, min_lnum), max.min(cend, max_lnum) do
+	for lnum = math.max(start, min_lnum), math.min(cend, max_lnum) do
 		local changedelete = hunk.type == "change" and removed > added and lnum == cend
 
 		signs[#signs + 1] = {
