@@ -1,6 +1,6 @@
 local config = require("perforce.config").config
-
 local cache = require("perforce.cache").cache
+local utils = require("perforce.utils")
 
 local Signs = require("perforce.signs")
 local Status = require("perforce.status")
@@ -21,24 +21,24 @@ local update_count = 0
 local M = {}
 
 ---@param bufnr integer
----@param signs Perforce.Signs
+---@param s Perforce.Signs
 ---@param hunks Perforce.Hunk[]
 ---@param top integer
 ---@param bot integer
 ---@param clear boolean
 -- ---@param untracked boolean
-local function apply_win_signs0(bufnr, signs, hunks, top, bot, clear) -- , untracked)
+local function apply_win_signs0(bufnr, s, hunks, top, bot, clear) -- , untracked)
 	if clear then
-		signs:remove(bufnr)
+		s:remove(bufnr)
 	end
 
 	for i, hunk in ipairs(hunks or {}) do
 		if clear and i == 1 then
-			signs:add(bufnr, Hunks.calc_signs(hunk, hunk.added.start, hunk.added.start)) --, untracked)
+			s:add(bufnr, Hunks.calc_signs(hunk, hunk.added.start, hunk.added.start)) --, untracked)
 		end
 
 		if top <= hunk.vend and bot >= hunk.added.start then
-			signs:add(bufnr, Hunks.calc_signs(hunk, top, bot)) --, untracked)
+			s:add(bufnr, Hunks.calc_signs(hunk, top, bot)) --, untracked)
 		end
 		if hunk.added.start > bot then
 			break
@@ -142,7 +142,47 @@ function M.on_lines(buf, first, last_orig, last_new)
 	M.update(bufnr, cache[buf])
 end
 
-function M.show_deleted(bufnr, nsd, hunk) end
+function M.show_deleted(bufnr, nsd, hunk)
+	local virt_lines = {} ---@type {[1]: string, [2]: string }[][]
+
+	for i, line in ipairs(hunk.removed.lines) do
+		local vline = {} ---@type {[1]: string, [2]: string}[]
+		local last_ecol = 1
+
+		if config.word_diff then
+			local regions = require("perforce.diff.internal").run_word_diff(
+				{ hunk.removed.lines[i] },
+				{ hunk.added.lines[i] }
+			)
+
+			for _, region in ipairs(regions) do
+				local rline, scol, ecol = region[1], region[3], region[4]
+				if rline > 1 then
+					break
+				end
+				vline[#vline + 1] = { line:sub(last_ecol, scol - 1), "PerforceDeleteVirtLn" }
+				vline[#vline + 1] = { line:sub(scol, ecol - 1), "PerforceDeleteVirtLnInline" }
+			end
+		end
+
+		if #line > 0 then
+			vline[#vline + 1] = { line:sub(last_ecol, -1), "PerforceDeleteVirtLn" }
+		end
+
+		local padding = string.rep(" ", VIRT_LINE_LEN - #line)
+		vline[#vline + 1] = { padding, "PerforceDeleteVirtLn" }
+
+		virt_lines[i] = vline
+	end
+
+	local topdelete = hunk.added.start == 0 and hunk.type == "delete"
+
+	local row = topdelete and 0 or hunk.added.start - 1
+	vim.api.nvim_buf_set_extmark(bufnr, nsd, row, -1, {
+		virt_lines = virt_lines,
+		virt_lines_above = hunk.type == "delete" or topdelete,
+	})
+end
 
 function M.show_added(bufnr, nsw, hunk)
 	local start_row = hunk.added.start - 1
@@ -218,6 +258,7 @@ end
 function M.update(bufnr, bcache)
 	bcache = bcache or cache[bufnr]
 	if not bcache then
+		utils.error("Cache for buffer " .. (bufnr or "nil buffer") .. " was nil")
 		return
 	end
 
@@ -229,16 +270,25 @@ function M.update(bufnr, bcache)
 
 	local p4_file = bcache.p4_file
 
-	-- TODO: compare text, if enabled
+	if not bcache.compare_text or config.refresh_on_update then
+		-- compare against whatever revision is last synced in the client workspace
+		bcache.compare_text = p4_file:get_text("#have")
+	end
 
 	-- run current diff
-	-- bcache.hunks = run_diff(bcache.compare_text, buftext)
+	bcache.hunks = run_diff(bcache.compare_text, buftext)
 
-	-- if  force_next_update or compare heads...
-	-- apply_win_signs
-	-- update_show_deleted
-	-- force_next_update = false
-	-- vim.api.nvim_exec_autocmds("User", { pattern = "PerforceUpdate", modeline = false })
+	if bcache.force_next_update or Hunks.compare_heads(bcache.hunks, old_hunks) then
+		apply_win_signs(bufnr, vim.fn.line("w0"), vim.fn.line("w$"), true)
+
+		update_show_deleted(bufnr)
+		cache.force_next_update = false
+
+		vim.api.nvim_exec_autocmds("User", {
+			pattern = "PerforceUpdate",
+			modeline = false,
+		})
+	end
 
 	local summary = Hunks.get_summary(bcache.hunks)
 	Status:update(bufnr, summary)
@@ -261,11 +311,11 @@ local function watch_dir_handler(bufnr)
 	end
 
 	-- local file = bcache.p4_file
-	-- Status:update(bufnr)
+	Status:update(bufnr)
 	-- file:update_file_info()
 
-	-- bcache:invalidate()
-	-- M.update(bufnr, bcache)
+	bcache:invalidate()
+	M.update(bufnr, bcache)
 end
 
 ---@param bufnr integer
@@ -301,11 +351,8 @@ local function on_win(cb, winid, bufnr, topline, botline_guess)
 		return false
 	end
 
-	-- local botline = math.min(botline_guess, vim.api.nvim_buf_line_count(bufnr))
-
-	-- local untracked = bcache.p4_file.
-
-	-- apply_win_signs(bufnr, topline + 1, botline + 1, false)
+	local botline = math.min(botline_guess, vim.api.nvim_buf_line_count(bufnr))
+	apply_win_signs(bufnr, topline + 1, botline + 1, false)
 end
 
 ---@param _cb 'line'

@@ -1,12 +1,11 @@
 local config = require("perforce.config").config
 local manager = require("perforce.manager")
+local utils = require("perforce.utils")
+local Hunks = require("perforce.hunks")
+local Path = require("plenary.path")
 
 local p4 = require("perforce.p4")
 local cache = require("perforce.cache").cache
-
-local Hunks = require("perforce.hunks")
-
-local Path = require("plenary.path")
 
 local M = {}
 
@@ -45,6 +44,16 @@ function M.toggle_linehl(value)
 	return config.linehl
 end
 
+function M.toggle_open_on_change(value)
+	if value ~= nil then
+		config.open_on_change = value
+	else
+		config.open_on_change = not config.open_on_change
+	end
+	M.refresh()
+	return config.open_on_change
+end
+
 local function get_cursor_hunk(bufnr, hunks)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 
@@ -59,43 +68,202 @@ end
 
 local function update(bufnr)
 	manager.update(bufnr)
-	-- TODO:
-	-- if vim.wo.diff then
-	-- 	require("perforce.diffthis").update(bufnr)
-	-- end
+	if vim.wo.diff then
+		require("perforce.diff.this").update(bufnr)
+	end
 end
 
-function M.add()
-	local bufnr = vim.api.nvim_get_current_buf()
-	local bcache = cache[bufnr]
+function M.add(opts)
+	opts = vim.tbl_deep_extend("force", {
+		bufnr = vim.api.nvim_get_current_buf(),
+		bang = false,
+	}, opts or {})
+
+	local bcache = cache[opts.bufnr]
 	if not bcache then
+		utils.error("Cache for buffer " .. opts.bufnr .. " was nil")
 		return
 	end
 
-	if not Path.new(bcache.file):exists() then
-		--FIXME: error message
+	if not bcache.p4_file:add() then
 		return
 	end
 
-	bcache.p4_file:add()
-
-	--TODO: update some kind of state
+	bcache.p4_file:refresh()
 end
 
-function M.delete() end
+function M.delete(opts)
+	opts = vim.tbl_deep_extend("force", {
+		bufnr = vim.api.nvim_get_current_buf(),
+		bang = false,
+	}, opts or {})
+
+	local bcache = cache[opts.bufnr]
+	if not bcache then
+		utils.error("Cache for buffer " .. opts.bufnr .. " was nil")
+		return
+	end
+
+	if not bcache.p4_file:delete() then
+		return
+	end
+
+	bcache.p4_file:refresh()
+
+	vim.api.nvim_buf_delete(opts.bufnr, { force = true })
+end
 
 function M.edit(opts)
-	local bufnr = vim.api.nvim_get_current_buf()
-	local bcache = cache[bufnr]
+	opts = vim.tbl_deep_extend("force", {
+		bufnr = vim.api.nvim_get_current_buf(),
+		bang = false,
+	}, opts or {})
+
+	local bcache = cache[opts.bufnr]
+	if not bcache then
+		utils.error("Cache for buffer " .. opts.bufnr .. " was nil")
+		return
+	end
+
+	if not opts.bang then
+		local confirm =
+			vim.fn.confirm(bcache.p4_file.local_path .. " is not open for edit. p4 edit now?", "&Yes\n&No", 1)
+		if confirm ~= 1 then
+			return
+		end
+	end
+
+	if not bcache.p4_file:edit() then
+		return
+	end
+
+	vim.bo[opts.bufnr].autoread = true
+	vim.bo[opts.bufnr].readonly = false
+	vim.bo[opts.bufnr].modifiable = true
+
+	bcache.p4_file:refresh()
+end
+
+function M.revert(opts)
+	opts = vim.tbl_deep_extend("force", {
+		bufnr = vim.api.nvim_get_current_buf(),
+		bang = false,
+	}, opts or {})
+
+	local bcache = cache[opts.bufnr]
+	if not bcache then
+		utils.error("Cache for buffer " .. opts.bufnr .. " was nil")
+		return
+	end
+
+	local fname = bcache.p4_file.local_path
+
+	if not bcache.p4_file:opened() then
+		utils.warn(fname .. " is not opened for edit")
+		return
+	end
+
+	if not opts.bang and vim.bo[opts.bufnr].modified == true then
+		local confirm = vim.fn.confirm("Revert " .. fname .. " changes?", "&Yes\n&No", 1)
+		if confirm ~= 1 then
+			return
+		end
+	end
+
+	if not bcache.p4_file:revert() then
+		return
+	end
+
+	-- reload buffer
+	vim.api.nvim_buf_call(opts.bufnr, function()
+		vim.cmd.edit(fname)
+	end)
+
+	utils.info(fname .. " changes reverted")
+
+	bcache.p4_file:refresh()
+end
+
+function M.diff(opts)
+	opts = vim.tbl_deep_extend("force", {
+		vertical = config.diff_opts.vertical,
+		bang = false,
+		fargs = {},
+	}, opts or {})
+
+	require("perforce.diff.this").diffthis("#have", opts)
+end
+
+local function clear_preview_inline(bufnr)
+	vim.api.nvim_buf_clear_namespace(bufnr, ns_inline, 0, -1)
+end
+
+function M.preview_hunk_inline(opts)
+	opts = vim.tbl_deep_extend("force", {
+		bufnr = vim.api.nvim_get_current_buf(),
+	}, opts or {})
+
+	local hunk = get_cursor_hunk(opts.bufnr)
+	if not hunk then
+		return
+	end
+
+	clear_preview_inline(opts.bufnr)
+
+	local winid ---@type integer
+	manager.show_added(opts.bufnr, ns_inline, hunk)
+	manager.show_deleted(opts.bufnr, ns_inline, hunk)
+
+	vim.api.nvim_create_autocmd({ "CursorMoved", "InsertEnter" }, {
+		buffer = opts.bufnr,
+		desc = "Clear perforce inline preview",
+		callback = function()
+			if winid then
+				pcall(vim.api.nvim_win_close, winid, true)
+			end
+			clear_preview_inline(opts.bufnr)
+		end,
+		once = true,
+	})
+
+	-- virtual lines will be hidden if the cursor is on the top row
+	-- automaticall scroll the viewport one line to avoid this problem
+	if vim.api.nvim_win_get_cursor(0)[1] == 1 then
+		local keys = hunk.removed.count .. "<c-y>"
+		local cy = vim.api.nvim_replace_termcodes(keys, true, false, true)
+		vim.api.nvim_feedkeys(cy, "n", false)
+	end
+end
+
+function M.select_hunk()
+	local hunk = get_cursor_hunk()
+	if not hunk then
+		return
+	end
+
+	vim.cmd("normal! " .. hunk.added.start .. "GV" .. hunk.vend .. "G")
+end
+
+function M.get_hunks(opts)
+	opts = vim.tbl_deep_extend("force", { bufnr = vim.api.nvim_get_current_buf() }, opts or {})
+
+	local bcache = cache[opts.bufnr]
 	if not bcache then
 		return
 	end
 
-	-- check if the file is open or not
-	-- prompt for edit if not opts.bang
+	local ret = {}
+	for _, h in ipairs(bcache.hunks or {}) do
+		ret[#ret + 1] = {
+			head = h.head,
+			lines = Hunks.patch_lines(h, vim.bo[opts.bufnr].fileformat),
+			type = h.type,
+			added = h.added,
+			removed = h.removed,
+		}
+	end
+	return ret
 end
-
-function M.revert() end
 
 function M.refresh()
 	manager.reset_signs()

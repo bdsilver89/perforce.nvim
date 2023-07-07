@@ -1,5 +1,19 @@
 local M = {}
 
+local jit_os ---@type string
+
+if jit then
+	jit_os = jit.os:lower()
+end
+
+local is_unix = false
+if jit_os then
+	is_unix = jit_os == "linux" or jit_os == "osx" or jit_os == "bsd"
+else
+	local binfmt = package.cpath:match("%p[\\|/]?%p(%a+)")
+	is_unix = binfmt ~= "dll"
+end
+
 function M.emptytable()
 	return setmetatable({}, {
 		__index = function(t, k)

@@ -2,8 +2,7 @@
 ---@field added integer
 ---@field changed integer
 ---@field removed integer
---TODO: add more file action counters?
--- add, edit, delete, branch, move/add, move/delete, integrate, import, purge, or archive,
+---@field head? string
 
 local M = {}
 
@@ -11,7 +10,7 @@ local M = {}
 ---@return string
 local function status_formatter(status)
 	local added, changed, removed = status.added, status.changed, status.removed
-	local status_txt = {} ---@param string[]
+	local status_txt = {} ---@type string[]
 	if added and added > 0 then
 		table.insert(status_txt, "+" .. added)
 	end
@@ -34,7 +33,7 @@ function M:update(bufnr, status)
 	if bstatus then
 		status = vim.tbl_extend("force", bstatus, status)
 	end
-	-- WARN: gitsigns tracks head here, not really applicable for p4?
+	vim.b[bufnr].perforce_head = status.head or ""
 	vim.b[bufnr].perforce_status_dict = status
 
 	vim.b[bufnr].perforce_status = status_formatter(status)

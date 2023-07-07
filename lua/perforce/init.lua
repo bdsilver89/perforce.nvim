@@ -1,4 +1,3 @@
-local log = require("perforce.debug.log")
 local config = require("perforce.config").config
 
 local M = {}
@@ -11,9 +10,6 @@ function M.setup(opts)
 		return
 	end
 
-	log.debug_mode = config.debug_mode
-	log.verbose = config.verbose
-
 	vim.api.nvim_create_user_command("P4", function(params)
 		require("perforce.cli").run(params)
 	end, {
@@ -25,7 +21,7 @@ function M.setup(opts)
 		end,
 	})
 
-	vim.api.nvim_create_augroup("perforce", {})
+	vim.api.nvim_create_augroup("perforce", { clear = true })
 
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
 		if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_name(buf) ~= "" then
@@ -51,13 +47,6 @@ return setmetatable(M, {
 		local actions = require("perforce.actions")
 		if actions[f] then
 			return actions[f]
-		end
-
-		if config.debug_mode then
-			local debug = require("perforce.debug")
-			if debug[f] then
-				return debug[f]
-			end
 		end
 	end,
 })

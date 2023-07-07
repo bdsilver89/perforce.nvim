@@ -1,10 +1,11 @@
 local config = require("perforce.config")
+local utils = require("perforce.utils")
 
 local Job = require("plenary.job")
 
 local M = {}
 
----@alias Perforce.File.Action
+---@alias Perforce.FileAction
 ---| "add"
 ---| "edit"
 ---| "delete"
@@ -16,7 +17,7 @@ local M = {}
 ---| "purge"
 ---| "archive"
 
----@alias Perforce.File.Type
+---@alias Perforce.FileType
 ---| "text"
 ---| "binary"
 ---| "symlink"
@@ -27,22 +28,29 @@ local M = {}
 ---| "resource"
 
 ---@class Perforce.File
+---@field exists_in_depot boolean
 ---@field depot_path string
 ---@field local_path string
----@field revision integer
----@field action Perforce.File.Action
----@field changelist integer
----@field filetype Perforce.File.Type
----@field workspace Perforce.Workspace
+-- ---@field shelved boolean
+---@field head_action? Perforce.FileAction
+---@field head_change? integer
+---@field head_revision? integer
+---@field head_filetype? Perforce.FileType
+---@field have_revision? integer
+---@field work_revision? integer
+---@field action Perforce.FileAction
+---@field changelist? integer
+---@field filetype Perforce.FileType
+-- ---@field workspace Perforce.Workspace
 local File = {}
 
 M.File = File
 
----@class Perforce.Workspace
----@field dir string
-local Workspace = {}
-
-M.Workspace = Workspace
+-- ---@class Perforce.Workspace
+-- ---@field dir string
+-- local Workspace = {}
+--
+-- M.Workspace = Workspace
 
 ---@param args string[]
 ---@param opts? plenary.Job
@@ -58,7 +66,7 @@ local function p4_command(args, opts)
 		end,
 	}, opts or {})
 
-	local stdout, retcode = Job:new(job):sync()
+	local stdout, retcode = Job:new(opts):sync()
 
 	return retcode, stdout, stderr
 end
@@ -66,25 +74,25 @@ end
 --------------------------------------------------------------------------------
 -- Workspace functions
 --------------------------------------------------------------------------------
----@param args string[]
----@param opts? plenary.Job
----@return number retcode, string[] stdout, string[] stderr
-function Workspace:command(args, opts)
-	opts = opts or {}
-	opts.cwd = self.dir
-
-	return p4_command(args, opts)
-end
-
---- p4 open command
---- @return Perforce.File[]: files opened in the workspace
-function Workspace:opened()
-	-- local _, _, _ = self:command({ "opened", "..." })
-
-	local result = {} --- @type Perforce.File[]
-	-- TODO: implement result parsing
-	return result
-end
+-- ---@param args string[]
+-- ---@param opts? plenary.Job
+-- ---@return number retcode, string[] stdout, string[] stderr
+-- function Workspace:command(args, opts)
+-- 	opts = opts or {}
+-- 	opts.cwd = self.dir
+--
+-- 	return p4_command(args, opts)
+-- end
+--
+-- --- p4 open command
+-- --- @return Perforce.File[]: files opened in the workspace
+-- function Workspace:opened()
+-- 	-- local _, _, _ = self:command({ "opened", "..." })
+--
+-- 	local result = {} --- @type Perforce.File[]
+-- 	-- TODO: implement result parsing
+-- 	return result
+-- end
 
 --------------------------------------------------------------------------------
 -- File functions
@@ -95,7 +103,11 @@ end
 function File.new(file)
 	local self = setmetatable({}, { __index = File })
 
-	-- TODO: add fstat queries to fill in table
+	-- temporarily set the local path to the one provided to this function
+	-- when we refresh, we will ask p4 for the absolute local path of the file
+	self.local_path = path
+
+	self:refresh()
 
 	return self
 end
@@ -104,7 +116,7 @@ end
 ---@param opts? plenary.Job
 ---@return number retcode, string[] stdout, string[] stderr
 function File:command(args, opts)
-	return self.workspace:command(args, opts)
+	return p4_command(args, opts)
 end
 
 --- p4 fstat command
@@ -127,14 +139,70 @@ function File:fstat(field)
 	return val
 end
 
----@return number?
-function File:have_revision()
-	return tonumber(self:fstat("haveRev"))
+function File:refresh()
+	self:refresh_exists_in_depot()
+
+	if self.exists_in_depot then
+		self:refresh_depot_path()
+		self:refresh_local_path()
+		self:refresh_head_action()
+		self:refresh_head_change()
+		self:refresh_head_filetype()
+		self:refresh_have_revision()
+		self:refresh_action()
+		self:refresh_filetype()
+		self:refresh_work_revision()
+		self:refresh_changelist()
+		-- TODO: more fields from fstat spec...
+	end
 end
 
----@return number?
-function File:current_changelist()
-	return tonumber(self:fstat("change"))
+function File:refresh_exists_in_depot()
+	self.exists_in_depot = self:fstat("headRev") ~= nil
+end
+
+function File:refresh_depot_path()
+	self.depot_path = self:fstat("depotFile")
+end
+
+function File:refresh_local_path()
+	self.local_path = self:fstat("clientFile")
+end
+
+function File:refresh_head_action()
+	self.head_action = self:fstat("headAction")
+end
+
+function File:refresh_head_change()
+	self.head_change = tonumber(self:fstat("headChange"))
+end
+
+function File:refresh_head_revision()
+	self.head_revision = tonumber(self:fstat("headRev"))
+end
+
+function File:refresh_head_filetype()
+	self.head_filetype = self:fstat("headType")
+end
+
+function File:refresh_have_revision()
+	self.have_revision = tonumber(self:fstat("haveRev"))
+end
+
+function File:refresh_action()
+	self.action = self:fstat("action")
+end
+
+function File:refresh_filetype()
+	self.filetype = self:fstat("filetype")
+end
+
+function File:refresh_work_revision()
+	self.work_revision = tonumber(self:fstat("workRev"))
+end
+
+function File:refresh_changelist()
+	self.changelist = tonumber(self:fstat("change"))
 end
 
 ---@return boolean
@@ -142,20 +210,60 @@ function File:opened()
 	return self:fstat("action") ~= ""
 end
 
+---@param msg string
+---@param ret integer
+---@param stdout string[]
+---@param stderr string[]
+local function log_failed_command(msg, ret, stdout, stderr)
+	utils.warn(string.format("%s (exited with code %d):\n%s\n%s", msg, ret, vim.fn.join(stdout), vim.fn.join(stderr)))
+end
+
+---@return boolean
 function File:add()
-	self:command({ "add", self.local_path })
+	local ret, stdout, stderr = self:command({ "add", self.local_path })
+	if ret ~= 0 or #stderr ~= 0 then
+		log_failed_command(string.format("Failed to add '%s'", self.local_path), ret, stdout, stderr)
+		return false
+	end
+	return true
 end
 
 function File:delete()
-	self:command({ "delete", self.local_path })
+	local ret, stdout, stderr = self:command({ "delete", self.local_path })
+	if ret ~= 0 or #stderr ~= 0 then
+		log_failed_command(string.format("Failed to delete '%s'", self.local_path), ret, stdout, stderr)
+		return false
+	end
+	return true
 end
 
 function File:edit()
-	self:command({ "edit", self.local_path })
+	local ret, stdout, stderr = self:command({ "edit", self.local_path })
+	if ret ~= 0 or #stderr ~= 0 then
+		log_failed_command(string.format("Failed to open '%s' for edit", self.local_path), ret, stdout, stderr)
+		return false
+	end
+	return true
 end
 
 function File:revert()
-	self:command({ "revert", self.local_path })
+	local ret, stdout, stderr = self:command({ "revert", self.local_path })
+	if ret ~= 0 or #stderr ~= 0 then
+		log_failed_command(string.format("Failed to revert '%s'", self.local_path), ret, stdout, stderr)
+		return false
+	end
+	return true
+end
+
+---@param cl_revision? string
+---@return string[]
+function File:get_text(cl_revision)
+	cl_revision = cl_revision or "#have"
+	local ret, stdout, _ = self:command({ "print", "-q", self.local_path .. cl_revision })
+	if ret ~= 0 then
+		return {} ---@type string[]
+	end
+	return stdout
 end
 
 return M

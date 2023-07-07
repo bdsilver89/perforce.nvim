@@ -33,11 +33,11 @@ local M = {
 }
 
 function M.new(cfg, name)
-	if config.extmark_signs then
-		return require("perforce.signs.extmarks")._new(cfg, config.signs, name)
-	else
-		return require("perforce.signs.vimfn")._new(cfg, config.signs, name)
-	end
+	-- if config.extmark_signs then
+	-- 	return require("perforce.signs.extmarks")._new(cfg, config.signs, name)
+	-- else
+	return require("perforce.signs.vimfn")._new(cfg, config.signs, name)
+	-- end
 end
 
 return M

@@ -26,11 +26,7 @@ local M = {}
 ---@field debug_mode boolean
 ---@field verbose boolean
 ---@field executable string
----@field open_on_save boolean
 ---@field open_on_change boolean
----@field annotate_revision boolean
----@field filelog_max integer
----@field open_loclist boolean
 ---@field diff_opts Perforce.DiffOpts
 ---@field signs table<Perforce.SignType,Perforce.SignConfig>
 ---@field count_chars table<string|integer, string>
@@ -40,6 +36,8 @@ local M = {}
 ---@field show_deleted boolean
 ---@field sign_priority integer
 ---@field extmark_signs boolean
+---@field word_diff boolean
+---@field refresh_on_update boolean
 ---@field watch_dir { enable: boolean }
 
 ---@type Perforce.Config
@@ -47,11 +45,7 @@ M.defaults = {
 	debug_mode = false,
 	verbose = false,
 	executable = "p4",
-	open_on_save = false,
 	open_on_change = true,
-	annotate_revision = false,
-	filelog_max = 10,
-	open_loclist = true,
 	diff_opts = {
 		algorithm = "myers",
 		internal = false,
@@ -110,6 +104,8 @@ M.defaults = {
 	show_deleted = false,
 	sign_priority = 6,
 	extmark_signs = false,
+	refresh_on_update = false,
+	word_diff = false,
 	watch_dir = {
 		enable = false,
 	},

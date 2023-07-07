@@ -1,6 +1,9 @@
 local p4 = require("perforce.p4")
 local hl = require("perforce.highlight")
 local manager = require("perforce.manager")
+local utils = require("perforce.utils")
+
+local config = require("perforce.config").config
 
 local pcache = require("perforce.cache")
 local cache = pcache.cache
@@ -12,9 +15,18 @@ local vimgrep_running = false
 
 local M = {}
 
-local function on_lines(_, bufnr, _, first, last_orig, last_new, byte_count) end
+local function on_lines(_, bufnr, _, first, last_orig, last_new, byte_count)
+	if first == last_orig and last_orig == last_new and byte_count == 0 then
+		-- on_lines might be called twice for undo events
+		-- this ignores the second call which indicates no change
+		return
+	end
+	return manager.on_lines(bufnr, first, last_orig, last_new)
+end
 
-local function on_reload(_, bufnr) end
+local function on_reload(_, bufnr)
+	manager.update(bufnr)
+end
 
 local function on_detach(_, bufnr)
 	M.detach(bufnr, true)
@@ -75,6 +87,7 @@ function M.attach(bufnr, ctx, trigger)
 	end
 
 	if not vim.api.nvim_buf_is_loaded(bufnr) then
+		utils.warn("Skip attach to unloaded buffer")
 		return
 	end
 
@@ -83,19 +96,28 @@ function M.attach(bufnr, ctx, trigger)
 		encoding = "utf-8"
 	end
 
-	local file --- @type string
-	if ctx then
-	else
+	-- local file --- @type string
+	-- if ctx then
+	-- else
+	-- end
+
+	local path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t")
+	local p4_file = p4.File.new(path)
+	if not p4_file then
+		utils.warn("Could not create")
+		return
 	end
 
-	local p4_file = p4.File.new()
-	if not p4_file then
+	if not p4_file.exists_in_depot then
+		-- NOTE: do not warn here!
+		-- until I find a better way to detect p4 workspaces and validate that this file is in a workspace,
+		-- this is the only mechanism that prevents non-perforce workspace files from being loaded
+		-- adding a warning here would bombard non-p4 workspaces with excessive warning messages
 		return
 	end
 
 	-- TODO: update a status
 	-- Status:update(bufnr, {})
-
 	-- TODO: check the paths
 
 	cache[bufnr] = CacheEntry.new({
@@ -103,6 +125,7 @@ function M.attach(bufnr, ctx, trigger)
 	})
 
 	if not vim.api.nvim_buf_is_loaded(bufnr) then
+		utils.warn("Skip attach to unloaded buffer")
 		return
 	end
 
@@ -112,7 +135,22 @@ function M.attach(bufnr, ctx, trigger)
 		on_detach = on_detach,
 	})
 
-	-- TODO: update manager
+	if config.open_on_change then
+		vim.api.nvim_create_autocmd("FileChangedRO", {
+			group = "perforce",
+			callback = function()
+				require("perforce.actions").edit({ bufnr = bufnr })
+			end,
+			buffer = bufnr,
+		})
+	end
+
+	vim.api.nvim_buf_attach(bufnr, false, {
+		on_line = on_lines,
+		on_reload = on_reload,
+		on_detach = on_detach,
+	})
+
 	manager.update(bufnr, cache[bufnr])
 end
 

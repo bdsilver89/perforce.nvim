@@ -12,7 +12,7 @@
 
 ---@class Perforce.Hunk
 ---@field type Perforce.HunkType
--- ---@field head string
+---@field head string
 ---@field added Perforce.HunkNode
 ---@field removed Perforce.HunkNode
 ---@field vend integer
@@ -26,14 +26,14 @@ local M = {}
 ---@return Perforce.Hunk
 function M.create_hunk(old_start, old_count, new_start, new_count)
 	return {
-		removed = { start = old_start, count = old_start, lines = {} },
+		removed = { start = old_start, count = old_count, lines = {} },
 		added = { start = new_start, count = new_count, lines = {} },
-		-- head = ("@@ - %d%s +%d%s @@"):format(
-		-- 	old_start,
-		-- 	old_count > 0 and "," .. old_count or "",
-		-- 	new_start,
-		-- 	new_count > 0 and "," .. new_count or ""
-		-- ),
+		head = ("@@ - %d%s +%d%s @@"):format(
+			old_start,
+			old_count > 0 and "," .. old_count or "",
+			new_start,
+			new_count > 0 and "," .. new_count or ""
+		),
 		vend = new_start + math.max(new_count - 1, 0),
 		type = new_count == 0 and "delete" or old_count == 0 and "add" or "change",
 	}
@@ -169,7 +169,27 @@ function M.find_hunk(lnum, hunks)
 end
 
 -- find_nearest_hunk
--- compare_heads
+
+---@param a Perforce.Hunk[]?
+---@param b Perforce.Hunk[]?
+---@return boolean
+function M.compare_heads(a, b)
+	if (a == nil) ~= (b == nil) then
+		return true
+	elseif a and #a ~= #b then
+		return true
+	end
+
+	if a and b then
+		for i, ah in ipairs(a) do
+			if b[i].head ~= ah.head then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 -- compare_new
 -- filter_common
 

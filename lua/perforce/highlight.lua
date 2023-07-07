@@ -7,7 +7,7 @@ local M = {}
 ---@field fg_factor number
 ---@field bg_factor number
 
----@type table<string,Perfoce.Hldef>[]
+---@type table<string,Perforce.Hldef>[]
 M.hls = {
 	{
 		PerforceAdd = {
@@ -55,7 +55,6 @@ M.hls = {
 			desc = "Used for deleted lines in previews",
 		},
 	},
-
 	{
 		PerforceAddInline = {
 			"TermCursor",
@@ -90,6 +89,20 @@ M.hls = {
 		PerforceDeleteLnInline = {
 			"PerforceDeleteInline",
 			desc = "Used for deleted word diff regions in inline preview",
+		},
+	},
+	{
+		PerforceDeleteVirtLn = {
+			"GitGutterDeleteLine",
+			"SignifyLineDelete",
+			"DiffDelete",
+			desc = "Used for deleted lines shown by inline preview",
+		},
+	},
+	{
+		PerforceDeleteVirtLnInline = {
+			"PerforceDeleteVirtLn",
+			desc = "Used for word diff regions in deleted lines shown by inline preview",
 		},
 	},
 }
