@@ -1,8 +1,8 @@
 local M = {}
 
----@param bufnr integer
----@param lines string[]
----@return integer
+--- @param bufnr integer
+--- @param lines string[]
+--- @return integer
 local function bufnr_calc_width(bufnr, lines)
 	return vim.api.nvim_buf_call(bufnr, function()
 		local width = 0
@@ -14,32 +14,34 @@ local function bufnr_calc_width(bufnr, lines)
 				end
 			end
 		end
-		return wdith + 1
+		return width + 1 -- Add 1 for some miinor padding
 	end)
 end
 
----@param winid integer
----@param nlines integer
+-- Expand height until all lines are visible to account for wrapped lines.
+--- @param winid integer
+--- @param nlines integer
 local function expand_height(winid, nlines)
 	local newheight = 0
 	for _ = 0, 50 do
 		local winheight = vim.api.nvim_win_get_height(winid)
 		if newheight > winheight then
+			-- Window must be max height
 			break
 		end
-		---@type integer
+		--- @type integer
 		local wd = vim.api.nvim_win_call(winid, function()
 			return vim.fn.line("w$")
 		end)
 		if wd >= nlines then
 			break
 		end
-		newheight = winheight + nline - wd
+		newheight = winheight + nlines - wd
 		vim.api.nvim_win_set_height(winid, newheight)
 	end
 end
 
-local function offest_hlmarks(hlmarks, row_offset)
+local function offset_hlmarks(hlmarks, row_offset)
 	for _, h in ipairs(hlmarks) do
 		if h.start_row then
 			h.start_row = h.start_row + row_offset
@@ -50,14 +52,14 @@ local function offest_hlmarks(hlmarks, row_offset)
 	end
 end
 
----@param fmt {[1]: string, [2]: string}[][]
+--- @param fmt {[1]: string, [2]: string}[][]
 local function process_linesspec(fmt)
-	local lines = {} ---@type string[]
+	local lines = {} --- @type string[]
 	local hls = {}
 
 	local row = 0
 	for _, section in ipairs(fmt) do
-		local sec = {} ---@type string[]
+		local sec = {} --- @type string[]
 		local pos = 0
 		for _, part in ipairs(section) do
 			local text = part[1]
@@ -85,8 +87,8 @@ local function process_linesspec(fmt)
 					start_col = scol,
 					end_col = pos,
 				}
-			else
-				offest_hlmarks(hl, srow)
+			else -- hl is {HlMark}
+				offset_hlmarks(hl, srow)
 				vim.list_extend(hls, hl)
 			end
 		end
@@ -116,20 +118,24 @@ function M.close(id)
 end
 
 function M.create0(lines, opts, id)
+	-- Close any popups not matching id
 	close_all_but(id)
 
 	local ts = vim.bo.tabstop
 	local bufnr = vim.api.nvim_create_buf(false, true)
 	assert(bufnr, "Failed to create buffer")
 
+	-- In case nvim was opened with '-M'
 	vim.bo[bufnr].modifiable = true
 	vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, lines)
 	vim.bo[bufnr].modifiable = false
 
+	-- Set tabstop before calculating the buffer width so that the correct width
+	-- is calculated
 	vim.bo[bufnr].tabstop = ts
 
 	local opts1 = vim.deepcopy(opts or {})
-	opts1.height = opts1.height or #lines
+	opts1.height = opts1.height or #lines -- Guess, adjust later
 	opts1.width = opts1.width or bufnr_calc_width(bufnr, lines)
 
 	local winid = vim.api.nvim_open_win(bufnr, false, opts1)
@@ -141,22 +147,27 @@ function M.create0(lines, opts, id)
 	end
 
 	if opts1.style == "minimal" then
+		-- If 'signcolumn' = auto:1-2, then a empty signcolumn will appear and cause
+		-- line wrapping.
 		vim.wo[winid].signcolumn = "no"
 	end
 
-	local group = vim.api.nvim_create_augroup("perforce_popup", {})
+	-- Close the popup when navigating to any window which is not the preview
+	-- itself.
+	local group = "perforce_popup"
+	local group_id = vim.api.nvim_create_augroup(group, {})
 	local old_cursor = vim.api.nvim_win_get_cursor(0)
 
 	vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
-		group = group,
+		group = group_id,
 		callback = function()
 			local cursor = vim.api.nvim_win_get_cursor(0)
-
+			-- Did the cursor REALLY change (neovim/neovim#12923)
 			if
 				(old_cursor[1] ~= cursor[1] or old_cursor[2] ~= cursor[2])
 				and vim.api.nvim_get_current_win() ~= winid
 			then
-				-- clear the group
+				-- Clear the augroup
 				vim.api.nvim_create_augroup(group, {})
 				pcall(vim.api.nvim_win_close, winid, true)
 				return
@@ -167,16 +178,17 @@ function M.create0(lines, opts, id)
 
 	vim.api.nvim_create_autocmd("WinClosed", {
 		pattern = tostring(winid),
-		group = group,
+		group = group_id,
 		callback = function()
-			-- clear the group
+			-- Clear the augroup
 			vim.api.nvim_create_augroup(group, {})
 		end,
 	})
 
+	-- update window position to follow the cursor when scrolling
 	vim.api.nvim_create_autocmd("WinScrolled", {
 		buffer = vim.api.nvim_get_current_buf(),
-		group = group,
+		group = group_id,
 		callback = function()
 			if vim.api.nvim_win_is_valid(winid) then
 				vim.api.nvim_win_set_config(winid, opts1)
@@ -208,8 +220,6 @@ function M.create(lines_spec, opts, id)
 	return winid, bufnr
 end
 
----@param id integer
----@return integer|nil
 function M.is_open(id)
 	for _, winid in ipairs(vim.api.nvim_list_wins()) do
 		if vim.w[winid].perforce_preview == id then
@@ -219,8 +229,6 @@ function M.is_open(id)
 	return nil
 end
 
----@param id integer
----@return integer?
 function M.focus_open(id)
 	local winid = M.is_open(id)
 	if winid then

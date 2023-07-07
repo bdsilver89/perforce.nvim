@@ -146,7 +146,7 @@ function M.show_deleted(bufnr, nsd, hunk)
 	local virt_lines = {} ---@type {[1]: string, [2]: string }[][]
 
 	for i, line in ipairs(hunk.removed.lines) do
-		local vline = {} ---@type {[1]: string, [2]: string}[]
+		local vline = {} --- @type {[1]: string, [2]: string}[]
 		local last_ecol = 1
 
 		if config.word_diff then
@@ -162,6 +162,7 @@ function M.show_deleted(bufnr, nsd, hunk)
 				end
 				vline[#vline + 1] = { line:sub(last_ecol, scol - 1), "PerforceDeleteVirtLn" }
 				vline[#vline + 1] = { line:sub(scol, ecol - 1), "PerforceDeleteVirtLnInline" }
+				last_ecol = ecol
 			end
 		end
 
@@ -180,7 +181,7 @@ function M.show_deleted(bufnr, nsd, hunk)
 	local row = topdelete and 0 or hunk.added.start - 1
 	vim.api.nvim_buf_set_extmark(bufnr, nsd, row, -1, {
 		virt_lines = virt_lines,
-		virt_lines_above = hunk.type == "delete" or topdelete,
+		virt_lines_above = hunk.type ~= "delete" or topdelete,
 	})
 end
 
@@ -189,7 +190,7 @@ function M.show_added(bufnr, nsw, hunk)
 
 	for offset = 0, hunk.added.count - 1 do
 		local row = start_row + offset
-		vim.api.nvim_buf_set_extmark(bufnr, nsw, row, 0, {
+		api.nvim_buf_set_extmark(bufnr, nsw, row, 0, {
 			end_row = row + 1,
 			hl_group = "PerforceAddPreview",
 			hl_eol = true,

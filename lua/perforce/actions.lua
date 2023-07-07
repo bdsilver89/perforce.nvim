@@ -7,7 +7,7 @@ local popup = require("perforce.popup")
 local p4 = require("perforce.p4")
 local cache = require("perforce.cache").cache
 
-local run_diff = require("perforce.diff").run_diff
+local run_diff = require("perforce.diff")
 
 local Path = require("plenary.path")
 
@@ -198,19 +198,6 @@ function M.diff(opts)
 	require("perforce.diff.this").diffthis("#have", opts)
 end
 
----@param fmt {[1]: string, [2]: string}[][]
----@param hunk Perforce.Hunk
-local function insert_hunk_hlmarks(fmt, hunk)
-	for _, line in ipairs(fmt) do
-		for _, s in ipairs(line) do
-			local hl = s[2]
-			if s[1] == "<hunk>" and type(hl) == "string" then
-				s2[2] = hlmarks_for_hunk(hunk, hl)
-			end
-		end
-	end
-end
-
 ---@param hunk Perforce.Hunk
 ---@param hl string
 ---@return string[]
@@ -261,6 +248,19 @@ local function hlmarks_for_hunk(hunk, hl)
 	end
 
 	return hls
+end
+
+---@param fmt {[1]: string, [2]: string}[][]
+---@param hunk Perforce.Hunk
+local function insert_hunk_hlmarks(fmt, hunk)
+	for _, line in ipairs(fmt) do
+		for _, s in ipairs(line) do
+			local hl = s[2]
+			if s[1] == "<hunk>" and type(hl) == "string" then
+				s[2] = hlmarks_for_hunk(hunk, hl)
+			end
+		end
+	end
 end
 
 ---@param fmt {[1]: string, [2]:string}[][]
