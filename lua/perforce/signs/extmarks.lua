@@ -54,14 +54,14 @@ function M:add(bufnr, signs)
 				line_hl_group = config.linehl and hls.linehl or nil,
 			})
 
-			if not ok and config.debug_mode then
-				vim.schedule(function()
-					error(table.concat({
-						string.format("Error placing extmark on line %d", s.lnum),
-						err,
-					}, "\n"))
-				end)
-			end
+			-- if not ok and config.debug_mode then
+			-- 	vim.schedule(function()
+			-- 		error(table.concat({
+			-- 			string.format("Error placing extmark on line %d", s.lnum),
+			-- 			err,
+			-- 		}, "\n"))
+			-- 	end)
+			-- end
 		end
 	end
 end

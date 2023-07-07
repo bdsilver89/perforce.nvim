@@ -23,8 +23,6 @@ local M = {}
 ---| 'untracked'
 
 ---@class Perforce.Config
----@field debug_mode boolean
----@field verbose boolean
 ---@field executable string
 ---@field open_on_change boolean
 ---@field diff_opts Perforce.DiffOpts
@@ -43,13 +41,11 @@ local M = {}
 
 ---@type Perforce.Config
 M.defaults = {
-	debug_mode = false,
-	verbose = false,
 	executable = "p4",
 	open_on_change = true,
 	diff_opts = {
 		algorithm = "myers",
-		internal = false,
+		internal = true,
 		indent_heuristic = false,
 		vertical = true,
 		linematch = nil,

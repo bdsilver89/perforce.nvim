@@ -48,6 +48,16 @@ function M.toggle_linehl(value)
 	return config.linehl
 end
 
+function M.toggle_word_diff(value)
+	if value ~= nil then
+		config.word_diff = value
+	else
+		config.word_diff = not config.word_diff
+	end
+	M.refresh()
+	return config.word_diff
+end
+
 function M.toggle_open_on_change(value)
 	if value ~= nil then
 		config.open_on_change = value
