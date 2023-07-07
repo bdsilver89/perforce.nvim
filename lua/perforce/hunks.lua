@@ -168,7 +168,43 @@ function M.find_hunk(lnum, hunks)
 	end
 end
 
--- find_nearest_hunk
+---@param lnum integer
+---@param hunks Perforce.Hunk[]
+---@param forwards boolean
+---@param wrap boolean
+---@return Perforce.Hunk, integer
+function M.find_nearest_hunk(lnum, hunks, forwards, wrap)
+	local ret ---@type Perforce.Hunk
+	local index ---@type integer
+	local distance = math.huge
+
+	if forwards then
+		for i = 1, #hunks do
+			local hunk = hunks[i]
+			local dist = hunk.added.start - lnum
+			if dist > 0 and dist < distance then
+				distance = dist
+				ret = hunk
+				index = i
+			end
+		end
+	else
+		for i = #hunks, 1, -1 do
+			local hunk = hunks[i]
+			local dist = lnum - hunk.vend
+			if dist > 0 and dist < distance then
+				distance = dist
+				ret = hunk
+				index = i
+			end
+		end
+	end
+	if not ret and wrap then
+		index = forwards and 1 or #hunks
+		ret = hunks[index]
+	end
+	return ret, index
+end
 
 ---@param a Perforce.Hunk[]?
 ---@param b Perforce.Hunk[]?
