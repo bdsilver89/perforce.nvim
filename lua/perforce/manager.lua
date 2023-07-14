@@ -109,7 +109,7 @@ local function apply_word_diff(bufnr, row)
 
 		local opts = { ephemeral = true, priority = 1000 }
 
-		if ecols > cols and ecol == scol + 1 then
+		if ecol > cols and ecol == scol + 1 then
 			opts.virt_text = { { " ", hl_group } }
 			opts.virt_text_pos = "overlay"
 		else
@@ -190,7 +190,7 @@ function M.show_added(bufnr, nsw, hunk)
 
 	for offset = 0, hunk.added.count - 1 do
 		local row = start_row + offset
-		api.nvim_buf_set_extmark(bufnr, nsw, row, 0, {
+		vim.api.nvim_buf_set_extmark(bufnr, nsw, row, 0, {
 			end_row = row + 1,
 			hl_group = "PerforceAddPreview",
 			hl_eol = true,
