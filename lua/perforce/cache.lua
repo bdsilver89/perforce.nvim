@@ -13,34 +13,35 @@ M.CacheEntry = CacheEntry
 ---@param cl_rev? string
 ---@return string
 function CacheEntry:get_bufname(cl_rev)
-	cl_rev = cl_rev or "#have"
-	return string.format("perforce://%s%s", self.p4_file.local_path, cl_rev)
+  cl_rev = cl_rev:gsub("#", "_"):gsub("@", "_")
+  cl_rev = cl_rev or "_have"
+  return string.format("perforce://%s%s", self.p4_file.local_path, cl_rev)
 end
 
 function CacheEntry:invalidate()
-	self.compare_text = nil
-	self.hunks = nil
+  self.compare_text = nil
+  self.hunks = nil
 end
 
 ---@param o Perforce.CacheEntry
 ---return Perforce.CacheEntry
 function CacheEntry.new(o)
-	return setmetatable(o, { __index = CacheEntry })
+  return setmetatable(o, { __index = CacheEntry })
 end
 
 function CacheEntry:destroy()
-	local w = self.dir_watcher
-	if w and not w:is_closing() then
-		w:close()
-	end
+  local w = self.dir_watcher
+  if w and not w:is_closing() then
+    w:close()
+  end
 end
 
 M.cache = {} --- @type table<integer, Perforce.CacheEntry>
 
 ---@param bufnr integer
 function M.destroy(bufnr)
-	M.cache[bufnr]:destroy()
-	M.cache[bufnr] = nil
+  M.cache[bufnr]:destroy()
+  M.cache[bufnr] = nil
 end
 
 return M
