@@ -120,6 +120,11 @@ function M.attach(bufnr, ctx, trigger)
   -- Status:update(bufnr, {})
   -- TODO: check the paths
 
+  if config.on_attach and config.on_attach(bufnr) == false then
+    utils.warn("User on_attach() returned false")
+    return
+  end
+
   cache[bufnr] = CacheEntry.new({
     p4_file = p4_file,
   })
@@ -128,12 +133,6 @@ function M.attach(bufnr, ctx, trigger)
     utils.warn("Skip attach to unloaded buffer")
     return
   end
-
-  vim.api.nvim_buf_attach(bufnr, false, {
-    on_lines = on_lines,
-    on_reload = on_reload,
-    on_detach = on_detach,
-  })
 
   if config.open_on_change then
     vim.api.nvim_create_autocmd("FileChangedRO", {
