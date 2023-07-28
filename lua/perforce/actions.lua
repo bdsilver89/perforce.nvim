@@ -204,7 +204,7 @@ function M.filelog(opts)
     max = config.filelog_max,
   }, opts or {})
 
-  local bcache = cache(opts.bufnr)
+  local bcache = cache[opts.bufnr]
   if not bcache then
     utils.error("Cache for buffer " .. opts.bufnr .. " was nil")
     return
