@@ -198,6 +198,23 @@ function M.revert(opts)
   bcache.p4_file:refresh()
 end
 
+function M.filelog(opts)
+  opts = vim.tbl_deep_extend("force", {
+    bufnr = vim.api.nvim_get_current_buf(),
+    max = config.filelog_max,
+  }, opts or {})
+
+  local bcache = cache(opts.bufnr)
+  if not bcache then
+    utils.error("Cache for buffer " .. opts.bufnr .. " was nil")
+    return
+  end
+
+  local flog = bcache.p4_file:filelog(opts.max)
+  vim.fn.setloclist(0, flog)
+  vim.cmd([[lopen]])
+end
+
 function M.diff(opts)
   if type(opts) == "string" then
     opts = vim.tbl_deep_extend("force", {

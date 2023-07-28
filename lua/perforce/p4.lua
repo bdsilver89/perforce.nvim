@@ -56,19 +56,19 @@ M.File = File
 ---@param opts? plenary.Job
 ---@return number retcode, string[] stdout, string[] stderr
 local function p4_command(args, opts)
-	local stderr = {} --- @type string[]
+  local stderr = {} --- @type string[]
 
-	opts = vim.tbl_deep_extend("force", {
-		command = config.executable or "p4",
-		args = args,
-		on_stderr = function(_, data)
-			table.insert(stderr, data)
-		end,
-	}, opts or {})
+  opts = vim.tbl_deep_extend("force", {
+    command = config.executable or "p4",
+    args = args,
+    on_stderr = function(_, data)
+      table.insert(stderr, data)
+    end,
+  }, opts or {})
 
-	local stdout, retcode = Job:new(opts):sync()
+  local stdout, retcode = Job:new(opts):sync()
 
-	return retcode, stdout, stderr
+  return retcode, stdout, stderr
 end
 
 --------------------------------------------------------------------------------
@@ -101,111 +101,111 @@ end
 ---@param file string
 ---@return Perforce.File
 function File.new(file)
-	local self = setmetatable({}, { __index = File })
+  local self = setmetatable({}, { __index = File })
 
-	-- temporarily set the local path to the one provided to this function
-	-- when we refresh, we will ask p4 for the absolute local path of the file
-	self.local_path = file
-	self:refresh()
-	return self
+  -- temporarily set the local path to the one provided to this function
+  -- when we refresh, we will ask p4 for the absolute local path of the file
+  self.local_path = file
+  self:refresh()
+  return self
 end
 
 ---@param args string[]
 ---@param opts? plenary.Job
 ---@return number retcode, string[] stdout, string[] stderr
 function File:command(args, opts)
-	return p4_command(args, opts)
+  return p4_command(args, opts)
 end
 
 --- p4 fstat command
 ---@param field string to query for
 ---@return string|nil
 function File:fstat(field)
-	local ret, stdout, _ = p4_command({
-		"fstat",
-		"-T",
-		field,
-		self.local_path,
-	})
-	local s = vim.fn.join(stdout, "\n")
+  local ret, stdout, _ = p4_command({
+    "fstat",
+    "-T",
+    field,
+    self.local_path,
+  })
+  local s = vim.fn.join(stdout, "\n")
 
-	if ret ~= 0 or not vim.startswith(s, "...") then
-		return nil
-	end
+  if ret ~= 0 or not vim.startswith(s, "...") then
+    return nil
+  end
 
-	local val = vim.fn.split(vim.fn.split(vim.fn.substitute(s, "\r", "", ""), "\n")[1])[3]
-	return val
+  local val = vim.fn.split(vim.fn.split(vim.fn.substitute(s, "\r", "", ""), "\n")[1])[3]
+  return val
 end
 
 function File:refresh()
-	self:refresh_exists_in_depot()
+  self:refresh_exists_in_depot()
 
-	if self.exists_in_depot then
-		self:refresh_depot_path()
-		self:refresh_local_path()
-		self:refresh_head_action()
-		self:refresh_head_change()
-		self:refresh_head_filetype()
-		self:refresh_have_revision()
-		self:refresh_action()
-		self:refresh_filetype()
-		self:refresh_work_revision()
-		self:refresh_changelist()
-		-- TODO: more fields from fstat spec...
-	end
+  if self.exists_in_depot then
+    self:refresh_depot_path()
+    self:refresh_local_path()
+    self:refresh_head_action()
+    self:refresh_head_change()
+    self:refresh_head_filetype()
+    self:refresh_have_revision()
+    self:refresh_action()
+    self:refresh_filetype()
+    self:refresh_work_revision()
+    self:refresh_changelist()
+    -- TODO: more fields from fstat spec...
+  end
 end
 
 function File:refresh_exists_in_depot()
-	self.exists_in_depot = self:fstat("headRev") ~= nil
+  self.exists_in_depot = self:fstat("headRev") ~= nil
 end
 
 function File:refresh_depot_path()
-	self.depot_path = self:fstat("depotFile")
+  self.depot_path = self:fstat("depotFile")
 end
 
 function File:refresh_local_path()
-	self.local_path = self:fstat("clientFile")
+  self.local_path = self:fstat("clientFile")
 end
 
 function File:refresh_head_action()
-	self.head_action = self:fstat("headAction")
+  self.head_action = self:fstat("headAction")
 end
 
 function File:refresh_head_change()
-	self.head_change = tonumber(self:fstat("headChange"))
+  self.head_change = tonumber(self:fstat("headChange"))
 end
 
 function File:refresh_head_revision()
-	self.head_revision = tonumber(self:fstat("headRev"))
+  self.head_revision = tonumber(self:fstat("headRev"))
 end
 
 function File:refresh_head_filetype()
-	self.head_filetype = self:fstat("headType")
+  self.head_filetype = self:fstat("headType")
 end
 
 function File:refresh_have_revision()
-	self.have_revision = tonumber(self:fstat("haveRev"))
+  self.have_revision = tonumber(self:fstat("haveRev"))
 end
 
 function File:refresh_action()
-	self.action = self:fstat("action")
+  self.action = self:fstat("action")
 end
 
 function File:refresh_filetype()
-	self.filetype = self:fstat("filetype")
+  self.filetype = self:fstat("filetype")
 end
 
 function File:refresh_work_revision()
-	self.work_revision = tonumber(self:fstat("workRev"))
+  self.work_revision = tonumber(self:fstat("workRev"))
 end
 
 function File:refresh_changelist()
-	self.changelist = tonumber(self:fstat("change"))
+  self.changelist = tonumber(self:fstat("change"))
 end
 
 ---@return boolean
 function File:opened()
-	return self:fstat("action") ~= ""
+  return self:fstat("action") ~= ""
 end
 
 ---@param msg string
@@ -213,55 +213,86 @@ end
 ---@param stdout string[]
 ---@param stderr string[]
 local function log_failed_command(msg, ret, stdout, stderr)
-	utils.warn(string.format("%s (exited with code %d):\n%s\n%s", msg, ret, vim.fn.join(stdout), vim.fn.join(stderr)))
+  utils.warn(string.format("%s (exited with code %d):\n%s\n%s", msg, ret, vim.fn.join(stdout), vim.fn.join(stderr)))
 end
 
 ---@return boolean
 function File:add()
-	local ret, stdout, stderr = self:command({ "add", self.local_path })
-	if ret ~= 0 or #stderr ~= 0 then
-		log_failed_command(string.format("Failed to add '%s'", self.local_path), ret, stdout, stderr)
-		return false
-	end
-	return true
+  local ret, stdout, stderr = self:command({ "add", self.local_path })
+  if ret ~= 0 or #stderr ~= 0 then
+    log_failed_command(string.format("Failed to add '%s'", self.local_path), ret, stdout, stderr)
+    return false
+  end
+  return true
 end
 
+---@return boolean
 function File:delete()
-	local ret, stdout, stderr = self:command({ "delete", self.local_path })
-	if ret ~= 0 or #stderr ~= 0 then
-		log_failed_command(string.format("Failed to delete '%s'", self.local_path), ret, stdout, stderr)
-		return false
-	end
-	return true
+  local ret, stdout, stderr = self:command({ "delete", self.local_path })
+  if ret ~= 0 or #stderr ~= 0 then
+    log_failed_command(string.format("Failed to delete '%s'", self.local_path), ret, stdout, stderr)
+    return false
+  end
+  return true
 end
 
+---@return boolean
 function File:edit()
-	local ret, stdout, stderr = self:command({ "edit", self.local_path })
-	if ret ~= 0 or #stderr ~= 0 then
-		log_failed_command(string.format("Failed to open '%s' for edit", self.local_path), ret, stdout, stderr)
-		return false
-	end
-	return true
+  local ret, stdout, stderr = self:command({ "edit", self.local_path })
+  if ret ~= 0 or #stderr ~= 0 then
+    log_failed_command(string.format("Failed to open '%s' for edit", self.local_path), ret, stdout, stderr)
+    return false
+  end
+  return true
 end
 
+---@return boolean
 function File:revert()
-	local ret, stdout, stderr = self:command({ "revert", self.local_path })
-	if ret ~= 0 or #stderr ~= 0 then
-		log_failed_command(string.format("Failed to revert '%s'", self.local_path), ret, stdout, stderr)
-		return false
-	end
-	return true
+  local ret, stdout, stderr = self:command({ "revert", self.local_path })
+  if ret ~= 0 or #stderr ~= 0 then
+    log_failed_command(string.format("Failed to revert '%s'", self.local_path), ret, stdout, stderr)
+    return false
+  end
+  return true
+end
+
+---@param max? integer
+---@return {filename: string, text: string}[]
+function File:filelog(max)
+  local result = {} ---@type {filename:string, text: string}[]
+  local cmd = { "filelog" }
+  if max then
+    vim.list_extend(cmd, { "-m", tostring(max) })
+  end
+  vim.list_extend(cmd, { self.local_path })
+
+  local ret, stdout, stderr = self:command(cmd)
+  if ret ~= 0 or #stderr ~= 0 then
+    log_failed_command(string.format("Failed to get filelog for '%s'", self.local_path), ret, stdout, stderr)
+    return result
+  end
+
+  for _, line in ipairs(stdout) do
+    local fields = vim.fn.split(line, "\\s", false)
+    if #fields > 8 then
+      local entry = {} ---@type { filename: string, text: string }
+      entry.filename = self.local_path .. fields[2]
+      entry.text = vim.fn.join({ unpack(fields, 3, #fields) })
+      result[#result + 1] = entry
+    end
+  end
+  return result
 end
 
 ---@param cl_revision? string
 ---@return string[]
 function File:get_text(cl_revision)
-	cl_revision = cl_revision or "#have"
-	local ret, stdout, _ = self:command({ "print", "-q", self.local_path .. cl_revision })
-	if ret ~= 0 then
-		return {} ---@type string[]
-	end
-	return stdout
+  cl_revision = cl_revision or "#have"
+  local ret, stdout, _ = self:command({ "print", "-q", self.local_path .. cl_revision })
+  if ret ~= 0 then
+    return {} ---@type string[]
+  end
+  return stdout
 end
 
 return M
