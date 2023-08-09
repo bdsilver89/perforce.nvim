@@ -1,6 +1,5 @@
-local config = require("perforce.config")
-local utils = require("perforce.utils")
-
+local Config = require("perforce.config")
+local Log = require("perforce.log")
 local Job = require("plenary.job")
 
 local M = {}
@@ -46,12 +45,6 @@ local File = {}
 
 M.File = File
 
--- ---@class Perforce.Workspace
--- ---@field dir string
--- local Workspace = {}
---
--- M.Workspace = Workspace
-
 ---@param args string[]
 ---@param opts? plenary.Job
 ---@return number retcode, string[] stdout, string[] stderr
@@ -59,7 +52,7 @@ local function p4_command(args, opts)
   local stderr = {} --- @type string[]
 
   opts = vim.tbl_deep_extend("force", {
-    command = config.executable or "p4",
+    command = Config.options.executable,
     args = args,
     on_stderr = function(_, data)
       table.insert(stderr, data)
@@ -71,28 +64,6 @@ local function p4_command(args, opts)
   return retcode, stdout, stderr
 end
 
---------------------------------------------------------------------------------
--- Workspace functions
---------------------------------------------------------------------------------
--- ---@param args string[]
--- ---@param opts? plenary.Job
--- ---@return number retcode, string[] stdout, string[] stderr
--- function Workspace:command(args, opts)
--- 	opts = opts or {}
--- 	opts.cwd = self.dir
---
--- 	return p4_command(args, opts)
--- end
---
--- --- p4 open command
--- --- @return Perforce.File[]: files opened in the workspace
--- function Workspace:opened()
--- 	-- local _, _, _ = self:command({ "opened", "..." })
---
--- 	local result = {} --- @type Perforce.File[]
--- 	-- TODO: implement result parsing
--- 	return result
--- end
 
 --------------------------------------------------------------------------------
 -- File functions
@@ -213,7 +184,7 @@ end
 ---@param stdout string[]
 ---@param stderr string[]
 local function log_failed_command(msg, ret, stdout, stderr)
-  utils.warn(string.format("%s (exited with code %d):\n%s\n%s", msg, ret, vim.fn.join(stdout), vim.fn.join(stderr)))
+  Log.warn(string.format("%s (exited with code %d):\n%s\n%s", msg, ret, vim.fn.join(stdout), vim.fn.join(stderr)))
 end
 
 ---@return boolean
